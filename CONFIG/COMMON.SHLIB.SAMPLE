@@ -1,0 +1,62 @@
+
+######################################################################
+#
+# COMMON.SHLIB -- The Common Configuration File
+#
+######################################################################
+
+
+######################################################################
+# Files and Directories
+######################################################################
+
+#Homedir=       # Home directory of this app (unnecessary to set normally)
+
+
+######################################################################
+# Web access config
+######################################################################
+
+# === If you cannot use any kotoriotoko commands at all due to old ===
+#     root certificate, enable the following two variables.
+#     (But it makes the commands insecurer)
+#no_cert_curl='-k'
+#no_cert_wget='--no-check-certificate'
+
+# === If curl command on your environment does not support ===========
+#     "--compress" option, comment out the following line.
+#     (It has been reported the following OS's curl doesn't surpport.
+#      OpenWrt, LEDE)
+curl_comp_opt='--compressed'
+
+
+######################################################################
+# API basic config
+######################################################################
+
+#APIVER=2.11    # Uncomment out this if you want to specify the target version
+                # (unnecessary to set normally)
+
+
+######################################################################
+# Your Application Info
+# (SET ALL VARIABLES IN THIS SECTION)
+######################################################################
+
+# === Application ID (client ID) =====================================
+APPID=
+
+# === Application Secret =============================================
+APPSEC=
+
+# === URL of the CGI script to get your temporary "user-access-token"
+#     You have to put the script on some web space in advance
+REDIRECT_URL_1=
+
+
+######################################################################
+# Your Access Tokens
+######################################################################
+
+# === Access Tokens
+[ -f "$Homedir/CONFIG/TOKEN.SHLIB" ] && . "$Homedir/CONFIG/TOKEN.SHLIB"
