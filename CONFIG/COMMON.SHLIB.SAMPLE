@@ -34,7 +34,7 @@ curl_comp_opt='--compressed'
 # API basic config
 ######################################################################
 
-#APIVER=2.11    # Uncomment out this if you want to specify the target version
+#APIVER=2.12    # Uncomment out this if you want to specify the target version
                 # (unnecessary to set normally)
 
 

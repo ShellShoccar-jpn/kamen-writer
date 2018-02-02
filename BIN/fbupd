@@ -31,15 +31,19 @@ print_usage_and_exit () {
   cat <<-USAGE 1>&2
 	Usage   : ${0##*/} [options] -i <post-id> <message>
 	          echo <message> | ${0##*/} [options] -i <post-id> -
-	Options : -p <mode>   |--privacy=<mode>
+	Options : -p <mode>              |--privacy=<mode>
 	             "ev" ................. EVERYONE (default)
 	             "fr" ................. ALL_FRIENDS
 	             "ff" ................. FRIENDS_OF_FRIENDS
 	             "sl" ................. SELF
 	             "al:<user-id>,..." ... CUSTOM(allow) for <user-id>,...
 	             "de:<user-id>,..." ... CUSTOM(deny) for <user-id>,...
-	          -t <user-id>,...|--tag=<user-id>,...
-	Version : 2018-01-29 00:53:34 JST
+	          -t <user-id|tagobj>,...|--tag=<user-id|tagobj>>,...
+	             * When no media file , -t is for <user-id>
+	             * When any media files, -t is for <tagobj>. That is a JSON
+	               string to indicate a x-y location where the friends is at.
+	               (See the Graph API document for detail)
+	Version : 2018-01-30 02:39:00 JST
 	USAGE
   exit 1
 }
@@ -57,6 +61,7 @@ error_exit() {
 Homedir="$(d=${0%/*}/; [ "_$d" = "_$0/" ] && d='./'; cd "$d.."; pwd)"
 PATH="$Homedir/UTL:$PATH"               # for additional command
 . "$Homedir/CONFIG/COMMON.SHLIB"        # account infomation
+ACK=$(printf '\006')
 
 # === Confirm that the required commands exist =======================
 # --- cURL or Wget
@@ -104,11 +109,11 @@ while :; do
                  shift 2
                  ;;
     --tag=*)     s=$(printf '%s' "${1#--tag=}" | tr -d '\n' | grep ^)
-                 tags="$tags,$s"; tags=${tags#,}
+                 tags="$tags$ACK$s"; tags=${tags#$ACK}
                  shift
                  ;;
     -t)          s=$(printf '%s' "${2:-}"      | tr -d '\n' | grep ^)
-                 tags="$tags,$s"; tags=${tags#,}
+                 tags="$tags$ACK$s"; tags=${tags#$ACK}
                  shift 2
                  ;;
     --rawout=*)  # for debug
@@ -139,8 +144,8 @@ printf '%s\n' "$privacy"                                 |
 grep -Eiq '^(ev|fr|ff|sl|(al|de):[0-9]+(,[0-9]+)*)?$' || {
   error_exit 1 'Invalid -p,--privacy option'
 }
-printf '%s\n' "$tags" | grep -Eq '^([0-9]+(,[0-9]+)*)?$' || {
-  error_exit 1 'Invalid -t,--tag option'
+printf '%s\n' "$tags" | grep -Eq '^([0-9]+('"$ACK"'[0-9]+)*)?$' || {
+  error_exit 1 'Invalid -t,--tag option. Now the opt. demands <user-id>.'
 }
 
 # === Get message ====================================================
@@ -182,6 +187,14 @@ case "$privacy" in
   [Dd][Ee]:*) privacy='{"value":"CUSTOM","deny":"'"${privacy#*:*}"'"}' ;;
   *)          privacy=''                                               ;;
 esac
+
+# === Generate the tags field ========================================
+case "$tags" in '') :;; *)
+  case "$mediafile" in
+    '') tags=$(echo           "$tags"  | tr "$ACK" ',');;
+     *) tags=$(printf '%s\n' "[$tags]" | tr "$ACK" ',');;
+  esac
+;; esac
 
 # === Generate the parameter string ==================================
 # --- 1) parameters except user contents
