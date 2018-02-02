@@ -48,7 +48,7 @@ print_usage_and_exit () {
 	             * When any media files, -t is for <tagobj>. That is a JSON
 	               string to indicate a x-y location where the friends is at.
 	               (See the Graph API document for detail)
-	Version : 2018-01-30 02:39:00 JST
+	Version : 2018-01-30 02:39:11 JST
 	USAGE
   exit 1
 }

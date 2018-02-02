@@ -4,7 +4,7 @@
 #
 # FBDEL : Delete A Message Onto A Facebook Wall
 #
-# Written by Shell-Shoccar Japan (@shellshoccarjpn) on 2018-01-27
+# Written by Shell-Shoccar Japan (@shellshoccarjpn) on 2018-01-29
 #
 # This is a public-domain software (CC0). It means that all of the
 # people can use this for any purposes with no restrictions at all.
@@ -30,7 +30,7 @@ export UNIX_STD=2003  # to make HP-UX conform to POSIX
 print_usage_and_exit () {
   cat <<-USAGE 1>&2
 	Usage   : ${0##*/} [options] <post-id>
-	Version : 2018-01-27 21:55:08 JST
+	Version : 2018-01-29 03:23:10 JST
 	USAGE
   exit 1
 }
