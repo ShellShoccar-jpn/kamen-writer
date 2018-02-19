@@ -4,7 +4,7 @@
 #
 # FBPOST : Post A Message Onto A Facebook Wall
 #
-# Written by Shell-Shoccar Japan (@shellshoccarjpn) on 2018-01-30
+# Written by Shell-Shoccar Japan (@shellshoccarjpn) on 2018-02-16
 #
 # This is a public-domain software (CC0). It means that all of the
 # people can use this for any purposes with no restrictions at all.
@@ -48,7 +48,7 @@ print_usage_and_exit () {
 	             * When any media files, -t is for <tagobj>. That is a JSON
 	               string to indicate a x-y location where the friends is at.
 	               (See the Graph API document for detail)
-	Version : 2018-01-30 02:39:11 JST
+	Version : 2018-02-16 16:38:12 JST
 	USAGE
   exit 1
 }
@@ -97,7 +97,7 @@ mediafile=''
 link=''
 objectid=''
 place=''
-privacy='ev'
+privacy=''
 tags=''
 rawoutputfile=''
 timeout=''
@@ -191,8 +191,8 @@ printf '%s\n' "$objectid"| grep -Eq '^([0-9]+(_[0-9]+)?)?$' || {
 printf '%s\n' "$place"| grep -Eq '^([0-9]+(_[0-9]+)?)?$' || {
   error_exit 1 'Invalid -l,--place option'
 }
-printf '%s\n' "$privacy"                                |
-grep -Eiq '^(ev|fr|ff|sl|(al|de):[0-9]+(,[0-9]+)*)$' || {
+printf '%s\n' "$privacy"                                 |
+grep -Eiq '^(|ev|fr|ff|sl|(al|de):[0-9]+(,[0-9]+)*)$' || {
   error_exit 1 'Invalid -p,--privacy option'
 }
 case "$mediafile" in
@@ -379,15 +379,18 @@ case $? in [!0]*) error_exit 1 'Failed to access API';; esac
 
 # === Parse the response =============================================
 # --- 1.extract the required parameters from the response (written in JSON)
-printf '%s' "$res"                                                    |
-if [ -n "$rawoutputfile" ]; then tee "$rawoutputfile"; else cat; fi   |
-parsrj.sh 2>/dev/null                                                 |
-awk 'BEGIN             {id=""; pi="";                              }  #
-     $1~/^\$\.id$/     {id=$2; next;                               }  #
-     $1~/^\$\.post_id$/{pi=$2; next;                               }  #
-     END               {if (id!="") {OFS=""; print "id="    ,id;}     #
-                        if (pi!="") {OFS=""; print "postid=",pi;}  }' |
-# --- 2.regard as an error if no line was outputed                    #
+printf '%s' "$res"                                                       |
+if [ -n "$rawoutputfile" ]; then tee "$rawoutputfile"; else cat; fi      |
+parsrj.sh 2>/dev/null                                                    |
+awk 'BEGIN             {id=""; pi="";                                 }  #
+     $1~/^\$\.id$/     {id=$2; next;                                  }  #
+     $1~/^\$\.post_id$/{pi=$2; next;                                  }  #
+     END               {if ((pi=="")&&(match(id,/^[0-9]+_[0-9]+$/))) {   #
+                          pi=id;id="";                                   #
+                        }                                                #
+                        if (id!="") {OFS=""; print "id="    ,id;}        #
+                        if (pi!="") {OFS=""; print "postid=",pi;}  }'    |
+# --- 2.regard as an error if no line was outputed                       #
 awk '{print;} END{exit 1-(NR>0);}'
 
 # === Print error message if some error occured ======================

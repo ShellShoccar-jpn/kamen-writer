@@ -1,0 +1,436 @@
+#!/bin/sh
+
+######################################################################
+#
+# SELF - "SELecting Field" : This Makes AWK "print $n" Simpler to write
+#
+# USAGE: self <f1> <f2> ... <file>
+#        self -d <f1> <f2> ... <string>
+#
+#        <fn> .... Field number you want to get
+#        <file> .. Text file which fileds are separated "[[:blank:]]+"
+#                  (It is called "Unicage Field Format")
+#        <string>  It will be explained in -d option
+#        -d ...... Direct Mode :
+#                  It make this command regard the last argument (<string>)
+#                  as a field formatted string instead of <file>
+#
+# Designed originally by Nobuaki Tounaka
+# Written by Shell-Shoccar Japan (@shellshoccarjpn) on 2017-07-18
+#
+# This is a public-domain software (CC0). It means that all of the
+# people can use this for any purposes with no restrictions at all.
+# By the way, we are fed up with the side effects which are brought
+# about by the major licenses.
+#
+######################################################################
+
+
+######################################################################
+# Initial Configuration
+######################################################################
+
+# === Initialize shell environment ===================================
+set -u
+umask 0022
+export LC_ALL=C
+type command >/dev/null 2>&1 && type getconf >/dev/null 2>&1 &&
+export PATH="$(command -p getconf PATH)${PATH+:}${PATH-}"
+export UNIX_STD=2003  # to make HP-UX conform to POSIX
+
+# === Define the functions for printing usage and error message ======
+print_usage_and_exit () {
+  cat <<-USAGE 1>&2
+	Usage   : ${0##*/} <f1> <f2> ... <file>
+	          ${0##*/} -d <f1> <f2> ... <string>
+	Args    : <fn> .... Field number you want to get
+	          <file> .. Text file which fileds are separated "[[:blank:]]+"
+	                    (It is called "Unicage Field Format")
+	          <string>  It will be explained in -d option
+	Options : -d ...... Direct Mode :
+	          It make this command regard the last argument (<string>)
+	          as a field formatted string instead of <file>
+	Version : 2017-07-18 02:39:39 JST
+	          Open usp Tukubai (POSIX Bourne Shell/POSIX commands/UTF-8)
+	USAGE
+  exit 1
+}
+error_exit() {
+  ${2+:} false && echo "${0##*/}: $2" 1>&2
+  exit $1
+}
+
+
+######################################################################
+# Parse Arguments
+######################################################################
+
+# === Get the options and the filepath ===============================
+# --- initialize option parameters -----------------------------------
+directmode=0
+directstr=''
+awkprstr=''    # partial code for AWK, which contains field variables for print
+file=''
+#
+# --- get them -------------------------------------------------------
+case $# in 0) print_usage_and_exit;; esac
+i=0
+dlm=''
+for arg in "$@"; do
+  i=$((i+1))
+  # direct mode processing
+  if   [ $i -eq  1 ] && [ "_$arg" = "_-d"   ]; then
+    directmode=1
+    continue
+  elif [ $i -eq $# ] && [ $directmode -ne 0 ]; then
+    directstr=$arg
+    arg=''
+    break
+  fi
+  # "/" extraction mode (make arg2 if this mode)
+  arg1=${arg%%/*}
+  arg2=${arg##*/}
+  if [ "_${arg1}/${arg2}" = "_$arg" ] && [ -n "$arg1" ] && [ -n "$arg2" ]; then
+    if printf '%s\n' "$arg2" | grep -Eq '^(NF|(NF-)?[0-9]+)$'; then
+      :
+    else
+      break
+    fi
+  else
+    arg2=''
+  fi
+  # get substr parameters from arg1 if possible
+  stpos=0
+  edpos=-1
+  arg1s=${arg1#*.}
+  arg1=${arg1%%.*}
+  if [ "_$arg1s" != "_$arg1" ]; then
+    if   printf '%s\n' "$arg1s" | grep -Eq '^-?[0-9]+$'        ; then
+      stpos=$arg1s
+      if [ $stpos -eq 0 ]; then
+        break
+      fi
+    elif printf '%s\n' "$arg1s" | grep -Eq '^-?[0-9]+\.[0-9]+$'; then
+      stpos=${arg1s%.*}
+      edpos=${arg1s#*.}
+      if [ $stpos -eq 0 ]; then
+        break
+      fi
+    else
+      break
+    fi
+  fi
+  # judge the field number type of arg1 (also arg2 if possible)
+  if   printf '%s\n' "$arg1" | grep -q '^[0-9]\{1,\}$'    ; then
+    arg1type=1
+  elif printf '%s\n' "$arg1" | grep -Eq '^(NF|NF-[0-9]+)$'; then
+    arg1type=2
+  else
+    arg1type=-1
+  fi
+  if   [ -z "$arg2" ]                                     ; then
+    arg2type=0
+  elif printf '%s\n' "$arg2" | grep -q '^[0-9]\{1,\}$'    ; then
+    arg2type=1
+  elif printf '%s\n' "$arg2" | grep -Eq '^(NF|NF-[0-9]+)$'; then
+    arg2type=2
+  else
+    arg2type=-1
+  fi
+  if [ $arg1type -lt 0 ] || [ $arg2type -lt 0 ]; then
+    break
+  fi
+  # generate the string for the AWK-print
+  if [ $arg2type -eq 0 ]; then
+    if [ $stpos -eq 0 ]; then
+      if [ $arg1type -eq 1 ]; then
+        awkprstr="$awkprstr$dlm\$$arg1"
+      else
+        awkprstr="$awkprstr$dlm\$($arg1)"
+      fi
+    else
+      if [ $arg1type -eq 1 ]; then
+        awkprstr="$awkprstr${dlm}getsubf(\$$arg1,$stpos,$edpos)"
+      else
+        awkprstr="$awkprstr${dlm}getsubf(\$($arg1),$stpos,$edpos)"
+      fi
+    fi
+  else
+    if [ $arg1type -eq 1 ] && [ $arg2type -eq 1 ]; then
+      if [ $stpos -eq 0 ] && [ $arg1 -le $arg2 ]; then
+        j=$arg1
+        while [ $j -le $arg2 ]; do
+          awkprstr="$awkprstr${dlm}\$$j"
+          dlm=','
+          j=$((j+1))
+        done
+      elif [ $stpos -eq 0 ] && [ $arg1 -ge $arg2 ]; then
+        j=$arg1
+        while [ $j -ge $arg2 ]; do
+          awkprstr="$awkprstr${dlm}\$$j"
+          dlm=','
+          j=$((j-1))
+        done
+      elif [ $stpos -ne 0 ] && [ $arg1 -le $arg2 ]; then
+        j=$arg1
+        while [ $j -le $arg2 ]; do
+          awkprstr="$awkprstr${dlm}getsubf(\$$j,$stpos,$edpos)"
+          dlm=','
+          j=$((j+1))
+        done
+      elif [ $stpos -ne 0 ] && [ $arg1 -ge $arg2 ]; then
+        j=$arg1
+        while [ $j -ge $arg2 ]; do
+          awkprstr="$awkprstr${dlm}getsubf(\$$j,$stpos,$edpos)"
+          dlm=','
+          j=$((j-1))
+        done
+      fi
+    elif [ $arg1type -eq 2 ] && [ $arg2type -eq 2 ]; then
+      [ "_$arg1" = '_NF' ] && arg1='NF-0'
+      [ "_$arg2" = '_NF' ] && arg2='NF-0'
+      arg1=${arg1#NF-}
+      arg2=${arg2#NF-}
+      if [ $stpos -eq 0 ] && [ $arg1 -le $arg2 ]; then
+        j=$arg1
+        while [ $j -le $arg2 ]; do
+          if [ $j -eq 0 ]; then
+            awkprstr="$awkprstr${dlm}\$(NF)"
+          else
+            awkprstr="$awkprstr${dlm}\$(NF-$j)"
+          fi
+          dlm=','
+          j=$((j+1))
+        done
+      elif [ $stpos -eq 0 ] && [ $arg1 -ge $arg2 ]; then
+        j=$arg1
+        while [ $j -ge $arg2 ]; do
+          if [ $j -eq 0 ]; then
+            awkprstr="$awkprstr${dlm}\$(NF)"
+          else
+            awkprstr="$awkprstr${dlm}\$(NF-$j)"
+          fi
+          dlm=','
+          j=$((j-1))
+        done
+      elif [ $stpos -ne 0 ] && [ $arg1 -le $arg2 ]; then
+        j=$arg1
+        while [ $j -le $arg2 ]; do
+          if [ $j -eq 0 ]; then
+            awkprstr="$awkprstr${dlm}getsubf(\$(NF),$stpos,$edpos)"
+          else
+            awkprstr="$awkprstr${dlm}getsubf(\$(NF-$j),$stpos,$edpos)"
+          fi
+          dlm=','
+          j=$((j+1))
+        done
+      elif [ $stpos -ne 0 ] && [ $arg1 -ge $arg2 ]; then
+        j=$arg1
+        while [ $j -ge $arg2 ]; do
+          if [ $j -eq 0 ]; then
+            awkprstr="$awkprstr${dlm}getsubf(\$(NF),$stpos,$edpos)"
+          else
+            awkprstr="$awkprstr${dlm}getsubf(\$(NF-$j),$stpos,$edpos)"
+          fi
+          dlm=','
+          j=$((j-1))
+        done
+      fi
+    else
+      if [ $stpos -eq 0 ]; then
+        awkprstr="$awkprstr${dlm}getfldclstr1($arg1,$arg2)"
+      else
+        awkprstr="$awkprstr${dlm}getfldclstr2($arg1,$arg2,$stpos,$edpos)"
+      fi
+    fi
+  fi
+  # loop
+  arg=''
+  dlm=','
+done
+
+# === Validate the arguments =========================================
+if [ -z "$awkprstr" ]; then
+  print_usage_and_exit
+fi
+if [ -n "$arg" ] && [ $i -eq $# ] && [ $directmode -eq 0 ]; then
+  file=$arg
+else
+  file=''
+fi
+if   [ "_$file" = '_'                ] ||
+     [ "_$file" = '_-'               ] ||
+     [ "_$file" = '_/dev/stdin'      ] ||
+     [ "_$file" = '_/dev/fd/0'       ] ||
+     [ "_$file" = '_/proc/self/fd/0' ]  ; then
+  file=''
+elif [ -f "$file"                    ] ||
+     [ -c "$file"                    ] ||
+     [ -p "$file"                    ]  ; then
+  [ -r "$file" ] || error_exit 1 'Cannot open the file: '"$file"
+else
+  print_usage_and_exit
+fi
+case "$file" in ''|-|/*|./*|../*) :;; *) file="./$file";; esac
+
+
+######################################################################
+# Prepare for the Main Routine
+######################################################################
+
+# === Generate the AWK code for "self" operation =====================
+awkcode='
+BEGIN {
+  _assert_exit = 0;
+}
+
+{
+  print '"$awkprstr"';
+}
+
+END {
+  if (_assert_exit) {
+    print "'"${0##*/}"': Invalid string position for separating the field",
+          "at line", NR | "cat 1>&2";
+    exit _assert_exit;
+  }
+}
+
+# return the substr in accordance with the counting rule of self command
+function getsubf(str, startpos, len  ,i,p,l,l2,l3,st,ed,p2b,s) {
+  # - "st" is a byte offset (start from 1) which the
+  #   "startpos" suggests by the Japanese text position (zenkaku-hankaku;
+  #   start from 1)
+  # - "ed" is a byte offset + 1 (start from 1) which the
+  #   "len" suggests by the Japanese text width (zenkaku-hankaku;
+  #   start from 1; -1 means "to the end")
+  st  = 0;
+  ed  = 0;
+  #
+  # - "i" is a byte offset (start from 1) from which the function
+  #   will read now
+  # - "l" is a Japanese text position (zenkaku-hankaku; start
+  #   from 1) of the letter which the function will read
+  i = 1;
+  if (startpos > 0) {
+    p = 1;
+    while (i <= length(str)) {
+      if (st == 0) {
+        if (startpos == p) {
+          st = i;
+          if (len == -1) {break;}
+        } else if (startpos < p) {
+          _assert_exit = 1;
+          exit _assert_exit;
+        }
+      }
+      l = substr(str, i, 1);
+      if        (l < "\200") {i++; p++;
+      } else if (l < "\300") {i++; # invalid UTF-8
+      } else if (l < "\340") {i += 2; p += 2;
+      } else if (l < "\360") {
+        if (l == "\357") {
+          l2 = substr(str, i+1, 1);
+          if        (l2 == "\275") {
+            l3 = substr(str, i+2, 1);
+            if ((l3 >= "\240") && (l3 < "\300")) {p += 1;
+            } else                               {p += 2;}
+          } else if (l2 == "\276") {
+            l3 = substr(str, i+2, 1);
+            if ((l3 >= "\200") && (l3 < "\240")) {p += 1;
+            } else                               {p += 2;}
+          } else                   {p += 2;               }
+        } else           {p += 2;                          }
+        i += 3;
+      } else if (l < "\370") {i += 4; p += 2;
+      } else if (l < "\374") {i += 5; p += 2;
+      } else if (l < "\376") {i += 6; p += 2;
+      } else                 {i++;                          } # invalidUTF-8
+      if (st > 0) {
+        if        ((startpos + len) == p) {ed = i ; break;
+        } else if (len == 0)              {ed = st; break;
+        } else if ((startpos + len) <  p) {_assert_exit = 1; exit _assert_exit;}
+      }
+    }
+    if (st == 0) {_assert_exit = 1; exit _assert_exit;}
+    return (ed == 0) ? substr(str,st) : substr(str,st,ed-st);
+  } else {
+    # - "p2b" is a table for converting Japanese position to bytes
+    p2b = "";
+    while (i <= length(str)) {
+      l = substr(str, i, 1);
+      if        (l < "\200") {i++;  p2b=p2b "1" ;
+      } else if (l < "\300") {i++;  p2b=p2b "1" ; # invalid UTF-8
+      } else if (l < "\340") {i+=2; p2b=p2b "2 ";
+      } else if (l < "\360") {
+        if (l == "\357") {
+          l2 = substr(str, i+1, 1);
+          if        (l2 == "\275") {
+            l3 = substr(str, i+2, 1);
+            if ((l3 >= "\240") && (l3 < "\300")) {p2b=p2b "3" ;
+            } else                               {p2b=p2b "3 ";}
+          } else if (l2 == "\276") {
+            l3 = substr(str, i+2, 1);
+            if ((l3 >= "\200") && (l3 < "\240")) {p2b=p2b "3" ;
+            } else                               {p2b=p2b "3 ";}
+          } else                   {p2b=p2b "3 ";               }
+        } else           {p2b=p2b "3 ";                          }
+        i += 3;
+      } else if (l < "\370") {i+=4; p2b=p2b "4 ";
+      } else if (l < "\374") {i+=5; p2b=p2b "5 ";
+      } else if (l < "\376") {i+=6; p2b=p2b "6 ";
+      } else                 {i++ ; p2b=p2b "1" ;               } # invalidUTF-8
+    }
+    s=substr(p2b,1,length(p2b)+startpos); gsub(/ /,"",s);
+    for (i=1; i<=length(s); i++) {st=st+substr(s,i,1);}
+    st++;
+    if (len==-1) {return substr(str,st);}
+    s=substr(p2b,length(p2b)+startpos+1,len); gsub(/ /,"",s);
+    for (i=1; i<=length(s); i++) {ed=ed+substr(s,i,1);}
+    return substr(str,st,ed);
+  }
+}
+# generate the field cluster for the number and NF mixed arguments
+# with no substr part (e.g. 1/NF, NF/1, 3/NF-3)
+function getfldclstr1(fldnum1,fldnum2 ,i,str) {
+  str = $fldnum1;
+  if (fldnum1 <= fldnum2) {
+    for (i=fldnum1+1;i<=fldnum2;i++) {
+      str = str FS $i;
+    }
+  } else {
+    for (i=fldnum1-1;i>=fldnum2;i--) {
+      str = str FS $i;
+    }
+  }
+  return str;
+}
+# generate the field cluster for the number and NF mixed arguments
+# with a substr part (e.g. 1.1/NF, NF.3.6/1, 3.1.5/NF-3)
+function getfldclstr2(fldnum1, fldnum2, stpos, len  ,i,str) {
+  str = getsubf($fldnum1,stpos,len);
+  if (fldnum1 <= fldnum2) {
+    for (i=fldnum1+1;i<=fldnum2;i++) {
+      str = str FS getsubf($i,stpos,len);
+    }
+  } else {
+    for (i=fldnum1-1;i>=fldnum2;i--) {
+      str = str FS getsubf($i,stpos,len);
+    }
+  }
+  return str;
+}
+'
+
+
+######################################################################
+# Main Routine
+######################################################################
+
+case $directmode in
+  0) exec awk "$awkcode" ${file:+"$file"}
+     ;;
+  *) printf '%s' "$directstr" | awk "$awkcode"
+     exit $?
+     ;;
+esac
